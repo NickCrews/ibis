@@ -82,11 +82,7 @@ def my_random(x: float) -> float:
 mark_impures = pytest.mark.parametrize(
     "impure",
     [
-        pytest.param(
-            lambda _: ibis.random(),
-            marks=no_randoms,
-            id="random",
-        ),
+        pytest.param(lambda _: ibis.random(), marks=no_randoms, id="random"),
         pytest.param(
             lambda _: ibis.uuid().cast(str).contains("a").ifelse(1, 0),
             marks=[
@@ -120,11 +116,8 @@ def test_impure_correlated(alltypes, impure):
     #   t AS (SELECT random() AS common)
     # SELECT common as x, common as y FROM t
     # Then both x and y should have the same value.
-    df = (
-        alltypes.select(common=impure(alltypes))
-        .select(x=_.common, y=_.common)
-        .execute()
-    )
+    expr = alltypes.select(common=impure(alltypes)).select(x=_.common, y=_.common)
+    df = expr.execute()
     tm.assert_series_equal(df.x, df.y, check_names=False)
 
 
@@ -195,5 +188,6 @@ def test_impure_uncorrelated_same_id(alltypes, impure):
     # Similar to test_impure_uncorrelated_different_id, but the two expressions
     # have the same ID. Still, they should be uncorrelated.
     common = impure(alltypes)
-    df = alltypes.select(x=common, y=common).execute()
+    expr = alltypes.select(x=common, y=common)
+    df = expr.execute()
     assert (df.x != df.y).any()
