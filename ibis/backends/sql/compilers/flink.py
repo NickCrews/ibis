@@ -453,7 +453,7 @@ class FlinkCompiler(SQLGlotCompiler):
         return lookup_table[index]
 
     def visit_TimestampNow(self, op):
-        return self.v.current_timestamp
+        return self.cast(self.v.current_timestamp, dt.timestamp)
 
     def visit_DateNow(self, op):
         return self.v.current_date
