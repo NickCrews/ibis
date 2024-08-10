@@ -170,14 +170,7 @@ impure_params_uncorrelated = pytest.mark.parametrize(
             ],
             id="uuid",
         ),
-        pytest.param(
-            lambda table: my_random(table.float_col),
-            marks=[
-                *no_udfs,
-                pytest.mark.notyet("duckdb", reason="instances are correlated"),
-            ],
-            id="udf",
-        ),
+        pytest.param(lambda table: my_random(table.float_col), marks=no_udfs, id="udf"),
     ],
 )
 
