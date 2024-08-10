@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 
-import pandas.testing as tm
 import pytest
 
 import ibis
@@ -13,6 +12,8 @@ from ibis.backends.tests.errors import (
     Py4JJavaError,
     PyDruidProgrammingError,
 )
+
+tm = pytest.importorskip("pandas.testing")
 
 no_randoms = [
     pytest.mark.notimpl(
