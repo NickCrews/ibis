@@ -45,7 +45,6 @@ no_udfs = [
             "risingwave",
         ]
     ),
-    pytest.mark.notimpl("pyspark", reason="only supports pandas UDFs"),
     pytest.mark.notyet(
         "flink",
         condition=sys.version_info >= (3, 11),
@@ -164,7 +163,15 @@ impure_params_uncorrelated = pytest.mark.parametrize(
             ],
             id="uuid",
         ),
-        pytest.param(lambda table: my_random(table.float_col), marks=no_udfs, id="udf"),
+        pytest.param(
+            lambda table: my_random(table.float_col),
+            marks=[
+                *no_udfs,
+                # no "impure" argument for pyspark yet
+                pytest.mark.notimpl("pyspark"),
+            ],
+            id="udf",
+        ),
     ],
 )
 
