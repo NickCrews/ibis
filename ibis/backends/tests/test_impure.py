@@ -15,6 +15,8 @@ from ibis.backends.tests.errors import (
 
 tm = pytest.importorskip("pandas.testing")
 
+pytestmark = pytest.mark.xdist_group("impure")
+
 no_randoms = [
     pytest.mark.notimpl(
         ["dask", "pandas", "polars"], raises=com.OperationNotDefinedError
