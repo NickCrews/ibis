@@ -184,7 +184,8 @@ def test_impure_uncorrelated_different_id(alltypes, impure):
     # eg if you look at the following SQL:
     # select random() as x, random() as y
     # Then x and y should be uncorrelated.
-    df = alltypes.select(x=impure(alltypes), y=impure(alltypes)).execute()
+    expr = alltypes.select(x=impure(alltypes), y=impure(alltypes))
+    df = expr.execute()
     assert (df.x != df.y).any()
 
 
