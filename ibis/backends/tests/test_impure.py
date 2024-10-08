@@ -18,9 +18,7 @@ tm = pytest.importorskip("pandas.testing")
 pytestmark = pytest.mark.xdist_group("impure")
 
 no_randoms = [
-    pytest.mark.notimpl(
-        ["dask", "pandas", "polars"], raises=com.OperationNotDefinedError
-    ),
+    pytest.mark.notimpl(["polars"], raises=com.OperationNotDefinedError),
     pytest.mark.notimpl("druid", raises=PyDruidProgrammingError),
     pytest.mark.notyet(
         "risingwave",
@@ -35,14 +33,12 @@ no_udfs = [
         [
             "bigquery",
             "clickhouse",
-            "dask",
             "druid",
             "exasol",
             "impala",
             "mssql",
             "mysql",
             "oracle",
-            "pandas",
             "trino",
             "risingwave",
         ]
@@ -57,16 +53,7 @@ no_udfs = [
 
 no_uuids = [
     pytest.mark.notimpl(
-        [
-            "druid",
-            "exasol",
-            "oracle",
-            "polars",
-            "pyspark",
-            "risingwave",
-            "pandas",
-            "dask",
-        ],
+        ["druid", "exasol", "oracle", "polars", "pyspark", "risingwave"],
         raises=com.OperationNotDefinedError,
     ),
     pytest.mark.notyet("mssql", reason="Unrelated bug: Incorrect syntax near '('"),
