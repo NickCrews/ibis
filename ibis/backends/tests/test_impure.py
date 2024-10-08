@@ -201,3 +201,12 @@ def test_impure_uncorrelated_same_id(alltypes, impure):
     expr = alltypes.select(x=common, y=common)
     df = expr.execute()
     assert (df.x != df.y).any()
+
+
+def test_self_join_with_generated_keys(con, monkeypatch):
+    monkeypatch.setattr(ibis.options, "default_backend", con)
+    left = ibis.range(5).unnest().name("idx").as_table().mutate(key=ibis.uuid())
+    right = left.filter(left.idx < 3)
+    expr = left.join(right, "key")
+    result = expr.execute()
+    assert result.shape == (3, 2)
