@@ -190,10 +190,14 @@ def test_impure_uncorrelated_same_id(alltypes, impure):
     assert (df.x != df.y).any()
 
 
-def test_self_join_with_generated_keys(con, monkeypatch):
-    monkeypatch.setattr(ibis.options, "default_backend", con)
-    left = ibis.range(5).unnest().name("idx").as_table().mutate(key=ibis.uuid())
+@pytest.mark.notyet(
+    ["duckdb", "sqlite"],
+    raises=AssertionError,
+    reason="instances are not correlated but ideally they would be",
+)
+def test_self_join_with_generated_keys(con):
+    left = ibis.memtable({"idx": list(range(5))}).mutate(key=ibis.uuid())
     right = left.filter(left.idx < 3)
     expr = left.join(right, "key")
-    result = expr.execute()
+    result = con.execute(expr)
     assert result.shape == (3, 2)
