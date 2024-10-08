@@ -7,23 +7,15 @@ import pytest
 import ibis
 import ibis.common.exceptions as com
 from ibis import _
-from ibis.backends.tests.errors import (
-    PsycoPg2InternalError,
-    Py4JJavaError,
-    PyDruidProgrammingError,
-)
+from ibis.backends.tests.errors import Py4JJavaError
 
 tm = pytest.importorskip("pandas.testing")
 
 pytestmark = pytest.mark.xdist_group("impure")
 
 no_randoms = [
-    pytest.mark.notimpl(["polars"], raises=com.OperationNotDefinedError),
-    pytest.mark.notimpl("druid", raises=PyDruidProgrammingError),
-    pytest.mark.notyet(
-        "risingwave",
-        raises=PsycoPg2InternalError,
-        reason="function random() does not exist",
+    pytest.mark.notimpl(
+        ["polars", "druid", "risingwave"], raises=com.OperationNotDefinedError
     ),
 ]
 
@@ -135,9 +127,7 @@ impure_params_uncorrelated = pytest.mark.parametrize(
             lambda _: ibis.random(),
             marks=[
                 *no_randoms,
-                pytest.mark.notyet(
-                    ["impala", "trino"], reason="instances are correlated"
-                ),
+                pytest.mark.notyet(["impala"], reason="instances are correlated"),
             ],
             id="random",
         ),
@@ -146,9 +136,7 @@ impure_params_uncorrelated = pytest.mark.parametrize(
             lambda _: ibis.uuid().cast(str).contains("a").ifelse(1, 0),
             marks=[
                 *no_uuids,
-                pytest.mark.notyet(
-                    ["mysql", "trino"], reason="instances are correlated"
-                ),
+                pytest.mark.notyet(["mysql"], reason="instances are correlated"),
             ],
             id="uuid",
         ),
@@ -191,13 +179,33 @@ def test_impure_uncorrelated_same_id(alltypes, impure):
 
 
 @pytest.mark.notyet(
-    ["duckdb", "sqlite"],
+    [
+        "duckdb",
+        "clickhouse",
+        "datafusion",
+        "mysql",
+        "impala",
+        "mssql",
+        "trino",
+        "flink",
+        "bigquery",
+    ],
     raises=AssertionError,
     reason="instances are not correlated but ideally they would be",
+)
+@pytest.mark.notyet(
+    ["sqlite"],
+    raises=AssertionError,
+    reason="instances are *sometimes* correlated but ideally they would always be",
+    strict=False,
+)
+@pytest.mark.notimpl(
+    ["polars", "risingwave", "druid", "exasol", "oracle", "pyspark"],
+    raises=com.OperationNotDefinedError,
 )
 def test_self_join_with_generated_keys(con):
     left = ibis.memtable({"idx": list(range(5))}).mutate(key=ibis.uuid())
     right = left.filter(left.idx < 3)
     expr = left.join(right, "key")
-    result = con.execute(expr)
-    assert result.shape == (3, 2)
+    result = con.execute(expr.count())
+    assert result == 3
