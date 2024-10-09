@@ -84,6 +84,7 @@ mark_impures = pytest.mark.parametrize(
 )
 
 
+# You can work around this by .cache()ing the table.
 @pytest.mark.notyet("sqlite", reason="instances are uncorrelated")
 @mark_impures
 def test_impure_correlated(alltypes, impure):
@@ -102,6 +103,7 @@ def test_impure_correlated(alltypes, impure):
     tm.assert_series_equal(df.x, df.y, check_names=False)
 
 
+# You can work around this by .cache()ing the table.
 @pytest.mark.notyet("sqlite", reason="instances are uncorrelated")
 @mark_impures
 def test_chained_selections(alltypes, impure):
@@ -153,6 +155,7 @@ impure_params_uncorrelated = pytest.mark.parametrize(
 )
 
 
+# You can work around this by doing .select().cache().select()
 @pytest.mark.notyet(["clickhouse"], reason="instances are correlated")
 @impure_params_uncorrelated
 def test_impure_uncorrelated_different_id(alltypes, impure):
@@ -167,6 +170,7 @@ def test_impure_uncorrelated_different_id(alltypes, impure):
     assert (df.x != df.y).any()
 
 
+# You can work around this by doing .select().cache().select()
 @pytest.mark.notyet(["clickhouse"], reason="instances are correlated")
 @impure_params_uncorrelated
 def test_impure_uncorrelated_same_id(alltypes, impure):
@@ -204,6 +208,12 @@ def test_impure_uncorrelated_same_id(alltypes, impure):
     raises=com.OperationNotDefinedError,
 )
 def test_self_join_with_generated_keys(con):
+    # Even with CTEs in the generated SQL, the backends still
+    # materialize a new value every time it is referenced.
+    # This isn't ideal behavior, but there is nothing we can do about it
+    # on the ibis side. The best you can do is to .cache() the table
+    # right after you assign the uuid().
+    # https://github.com/ibis-project/ibis/pull/9014#issuecomment-2399449665
     left = ibis.memtable({"idx": list(range(5))}).mutate(key=ibis.uuid())
     right = left.filter(left.idx < 3)
     expr = left.join(right, "key")
