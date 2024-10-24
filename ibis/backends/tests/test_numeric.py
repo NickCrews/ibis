@@ -1099,7 +1099,6 @@ def test_binary_arithmetic_operations(backend, alltypes, df, op):
     backend.assert_series_equal(result, expected, check_exact=False)
 
 
-@pytest.mark.notimpl("flink", raises=AssertionError, reason="Flink does floor division")
 def test_integer_truediv(con):
     expr = 1 / ibis.literal(2)
     result = con.execute(expr)
