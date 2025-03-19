@@ -17,17 +17,17 @@ alltypes = ibis.table(
         "k": "time",
     },
 )
-lit = ibis.literal("foo")
-lit1 = ibis.literal("baz")
-lit2 = ibis.literal("bar")
+lit = ibis.literal("bar")
 
 result = alltypes.select(
     alltypes.g.cases(
-        (lit, lit2), (lit1, ibis.literal("qux")), else_=ibis.literal("default")
+        (ibis.literal("foo"), lit),
+        (ibis.literal("baz"), ibis.literal("qux")),
+        else_=ibis.literal("default"),
     ).name("col1"),
     ibis.cases(
-        ((alltypes.g == lit), lit2),
-        ((alltypes.g == lit1), alltypes.g),
+        ((alltypes.g == "foo"), lit),
+        ((alltypes.g == "baz"), alltypes.g),
         else_=ibis.literal(None),
     ).name("col2"),
     alltypes.a,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from public import public
 
 import ibis.expr.datatypes as dt
+from ibis.expr.datatypes.core import PreferUntypedLiteral  # noqa: TC001
 from ibis.expr.operations.core import Binary, Unary, Value
 from ibis.expr.operations.reductions import Filterable, Reduction
 
@@ -380,7 +381,7 @@ class GeoCentroid(GeoSpatialUnOp):
 class GeoDFullyWithin(GeoSpatialBinOp):
     """Check if the geometries are fully within `distance` of one another."""
 
-    distance: Value[dt.Floating]
+    distance: Value[PreferUntypedLiteral[dt.Floating]]
 
     dtype = dt.boolean
 
@@ -389,7 +390,7 @@ class GeoDFullyWithin(GeoSpatialBinOp):
 class GeoDWithin(GeoSpatialBinOp):
     """Check if the geometries are within `distance` of one another."""
 
-    distance: Value[dt.Floating]
+    distance: Value[PreferUntypedLiteral[dt.Floating]]
 
     dtype = dt.boolean
 

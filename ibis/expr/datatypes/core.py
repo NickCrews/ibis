@@ -26,6 +26,7 @@ from ibis.common.annotations import attribute
 from ibis.common.collections import FrozenOrderedDict, MapSet
 from ibis.common.dispatch import lazy_singledispatch
 from ibis.common.grounds import Concrete, Singleton
+from ibis.common.patterns import Any as AnyPattern
 from ibis.common.patterns import Between, Coercible, CoercionError
 from ibis.common.temporal import IntervalUnit, TimestampUnit
 
@@ -470,6 +471,20 @@ class DataType(Concrete, Coercible):
     def is_variadic(self) -> bool:
         """Return true if an instance of a Variadic type."""
         return isinstance(self, Variadic)
+
+
+class PreferUntypedLiteral(AnyPattern):
+    def __class_getitem__(cls, wrapped: type[DataType] = DataType):
+        return Annotated[wrapped, cls()]
+
+
+def prefers_untyped_literal(obj: type[DataType] | TypeVar) -> bool:
+    if isinstance(obj, TypeVar):
+        obj = obj.__bound__
+    try:
+        return isinstance(obj.__metadata__[0], PreferUntypedLiteral)
+    except AttributeError:
+        return False
 
 
 @public

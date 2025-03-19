@@ -47,7 +47,8 @@ class Value(Node, Coercible, DefaultTypeVars, Generic[T, S]):
     ) -> Self:
         # note that S=Shape is unused here since the pattern will check the
         # shape of the value expression after executing Value.__coerce__()
-        from ibis.expr.operations.generic import NULL, Literal
+        from ibis.expr.datatypes.core import prefers_untyped_literal
+        from ibis.expr.operations.generic import NULL, Literal, UntypedLiteral
         from ibis.expr.types import Expr
 
         if isinstance(value, Expr):
@@ -72,7 +73,10 @@ class Value(Node, Coercible, DefaultTypeVars, Generic[T, S]):
                 dtype = dt.infer(value)
 
         try:
-            return Literal(value, dtype=dtype)
+            if prefers_untyped_literal(T):
+                return UntypedLiteral(value, dtype=dtype)
+            else:
+                return Literal(value, dtype=dtype)
         except TypeError:
             raise CoercionError(f"Unable to coerce {value!r} to Value[{T!r}]")
 
@@ -134,6 +138,39 @@ class Value(Node, Coercible, DefaultTypeVars, Generic[T, S]):
             typename = self.dtype.scalar
 
         return getattr(ir, typename)(self)
+
+
+# V = TypeVar("V", bound=Value, covariant=True)
+
+
+# def coerce_prefer_untyped_literal(
+#     cls: V, value: Any, T: Optional[type] = None, S: Optional[type] = None
+# ) -> V:
+#     from ibis.expr.operations.generic import Literal, UntypedNumericLiteral
+
+#     raw = cls.__coerce__(value, T, S)
+#     if isinstance(raw, Literal):
+#         return UntypedNumericLiteral(raw.value, raw.dtype)
+#     return raw
+
+
+# @public
+# class NTile(Analytic):
+#     """Compute the percentile of a column over a window."""
+
+#     buckets: Annotated[Scalar[dt.Integer], coerce_prefer_untyped_literal]
+
+#     dtype = dt.int64
+
+
+# @public
+# class WindowBoundary(Value[T, S]):
+#     """Window boundary object."""
+
+#     # TODO(kszucs): consider to prefer Concrete base class here
+#     # pretty similar to SortKey and Alias operations which wrap a single value
+#     value: Annotated[Value[T, S], coerce_prefer_untyped_literal]
+#     preceding: bool
 
 
 # convenience aliases

@@ -291,6 +291,11 @@ def literal(op, value, dtype):
         return CallStatement("ibis.literal", repr(value))
 
 
+@translate.register(ops.UntypedLiteral)
+def untyped_literal(op, value, dtype):
+    return repr(value)
+
+
 @translate.register(ops.Cast)
 def cast(op, arg, to):
     return f"{arg}.cast({str(to)!r})"

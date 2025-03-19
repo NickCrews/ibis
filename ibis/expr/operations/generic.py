@@ -158,6 +158,11 @@ NULL = Literal(None, dt.null)
 
 
 @public
+class UntypedLiteral(Literal):
+    """A constant value that when doesn't include a CAST when compiled."""
+
+
+@public
 class ScalarParameter(Scalar):
     _counter = itertools.count()
 

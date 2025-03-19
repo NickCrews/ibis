@@ -17,6 +17,8 @@ alltypes = ibis.table(
         "k": "time",
     },
 )
-lit = ibis.literal(0)
+untypedliteral = 0
 
-result = alltypes.filter((alltypes.a > lit), alltypes.f.between(lit, ibis.literal(1)))
+result = alltypes.filter(
+    (alltypes.a > untypedliteral), alltypes.f.between(untypedliteral, 1)
+)

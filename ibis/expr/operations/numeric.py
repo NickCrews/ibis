@@ -11,6 +11,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.rules as rlz
 from ibis import util
 from ibis.common.annotations import attribute
+from ibis.expr.datatypes.core import PreferUntypedLiteral  # noqa: TC001
 from ibis.expr.operations.core import Binary, Unary, Value
 
 Integer = Value[dt.Integer]
@@ -92,7 +93,7 @@ class Negate(Unary):
 class IsNan(Unary):
     """Check if the value is NaN."""
 
-    arg: Value[dt.Floating]
+    arg: PreferUntypedLiteral[Value[dt.Floating]]
 
     dtype = dt.boolean
 
@@ -101,7 +102,7 @@ class IsNan(Unary):
 class IsInf(Unary):
     """Check if the value is infinite."""
 
-    arg: Value[dt.Floating]
+    arg: PreferUntypedLiteral[Value[dt.Floating]]
 
     dtype = dt.boolean
 

@@ -9,6 +9,7 @@ import ibis.expr.rules as rlz
 from ibis.common.annotations import ValidationError, attribute
 from ibis.common.exceptions import IbisTypeError
 from ibis.common.typing import VarTuple  # noqa: TC001
+from ibis.expr.datatypes.core import PreferUntypedLiteral  # noqa: TC001
 from ibis.expr.operations.core import Binary, Unary, Value
 
 
@@ -50,8 +51,8 @@ class Xor(LogicalBinary):
 class Comparison(Binary):
     """Base class for comparison operations."""
 
-    left: Value
-    right: Value
+    left: Value[PreferUntypedLiteral[dt.DataType]]
+    right: Value[PreferUntypedLiteral[dt.DataType]]
 
     dtype = dt.boolean
 
@@ -111,9 +112,9 @@ class IdenticalTo(Comparison):
 class Between(Value):
     """Check if a value is within a range."""
 
-    arg: Value
-    lower_bound: Value
-    upper_bound: Value
+    arg: Value[PreferUntypedLiteral[dt.DataType]]
+    lower_bound: Value[PreferUntypedLiteral[dt.DataType]]
+    upper_bound: Value[PreferUntypedLiteral[dt.DataType]]
 
     dtype = dt.boolean
     shape = rlz.shape_like("args")
@@ -136,8 +137,8 @@ class Between(Value):
 class InValues(Value):
     """Check if a value is in a set of values."""
 
-    value: Value
-    options: VarTuple[Value]
+    value: Value[PreferUntypedLiteral[dt.DataType]]
+    options: VarTuple[Value[PreferUntypedLiteral[dt.DataType]]]
 
     dtype = dt.boolean
 
@@ -160,7 +161,7 @@ class IfElse(Value):
     Many backends implement this as a built-in function.
     """
 
-    bool_expr: Value[dt.Boolean]
+    bool_expr: Value[PreferUntypedLiteral[dt.Boolean]]
     true_expr: Value
     false_null_expr: Value
 

@@ -422,7 +422,7 @@ class Value(Expr):
         Different backends have different names for their native types
 
         >>> ibis.duckdb.connect().execute(ibis.literal(5.4).typeof())
-        'DECIMAL(2,1)'
+        'DOUBLE'
         >>> ibis.sqlite.connect().execute(ibis.literal(5.4).typeof())
         'real'
         """
@@ -2992,7 +2992,10 @@ def literal(value: Any, type: dt.DataType | str | None = None) -> Scalar:
             )
 
     dtype = dt.infer(value) if type is None else dt.dtype(type)
-    return ops.Literal(value, dtype=dtype).to_expr()
+    if type is None:
+        return ops.UntypedLiteral(value, dtype=dtype).to_expr()
+    else:
+        return ops.Literal(value, dtype=dtype).to_expr()
 
 
 def _is_null_literal(value: Any) -> bool:
