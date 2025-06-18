@@ -35,7 +35,7 @@ from ibis.common.dispatch import lazy_singledispatch
 from ibis.expr.operations.udf import InputType
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, MutableMapping, Sequence
+    from collections.abc import Generator, Iterable, Mapping, MutableMapping, Sequence
 
     import pandas as pd
     import polars as pl
@@ -89,18 +89,35 @@ class Backend(
 
     @property
     def current_catalog(self) -> str:
-        with self._safe_raw_sql(sg.select(self.compiler.f.current_database())) as cur:
-            [(db,)] = cur.fetchall()
+        select = sg.select(self.compiler.f.current_database())
+        [(db,)] = self.raw_sql(select).fetchall()
         return db
 
     @property
     def current_database(self) -> str:
-        with self._safe_raw_sql(sg.select(self.compiler.f.current_schema())) as cur:
-            [(db,)] = cur.fetchall()
+        select = sg.select(self.compiler.f.current_schema())
+        [(db,)] = self.raw_sql(select).fetchall()
         return db
 
+    @contextlib.contextmanager
+    def begin(self) -> Generator[duckdb.DuckDBPyConnection, None, None]:
+        con = self.con
+        cur = con.cursor()
+        try:
+            cur.begin()
+            yield cur
+        except Exception:
+            cur.rollback()
+            raise
+        else:
+            cur.commit()
+        finally:
+            cur.close()
+
     # TODO(kszucs): should be moved to the base SQLGLot backend
-    def raw_sql(self, query: str | sg.Expression, **kwargs: Any) -> Any:
+    def raw_sql(
+        self, query: str | sg.Expression, **kwargs: Any
+    ) -> duckdb.DuckDBPyConnection:
         with contextlib.suppress(AttributeError):
             query = query.sql(dialect=self.name)
         return self.con.execute(query, **kwargs)
@@ -210,7 +227,8 @@ class Backend(
 
         # This is the same table as initial_table unless overwrite == True
         final_table = sg.table(name, catalog=catalog, db=database, quoted=quoted)
-        with self._safe_raw_sql(create_stmt) as cur:
+        with self.begin() as cur:
+            cur.execute(create_stmt)
             if query is not None:
                 insert_stmt = sge.insert(
                     query, into=initial_table, columns=table.columns
@@ -316,18 +334,13 @@ class Backend(
             }
         )
 
-    @contextlib.contextmanager
-    def _safe_raw_sql(self, *args, **kwargs):
-        yield self.raw_sql(*args, **kwargs)
-
     def list_catalogs(self, *, like: str | None = None) -> list[str]:
         col = "catalog_name"
         query = sg.select(sge.Distinct(expressions=[sg.column(col)])).from_(
             sg.table("schemata", db="information_schema")
         )
-        with self._safe_raw_sql(query) as cur:
-            result = cur.fetch_arrow_table()
-        dbs = result[col]
+        t = self.raw_sql(query).fetch_arrow_table()
+        dbs = t[col]
         return self._filter_with_like(dbs.to_pylist(), like)
 
     def list_databases(
@@ -341,8 +354,7 @@ class Backend(
         if catalog is not None:
             query = query.where(sg.column("catalog_name").eq(sge.convert(catalog)))
 
-        with self._safe_raw_sql(query) as cur:
-            out = cur.fetch_arrow_table()
+        out = self.raw_sql(query).fetch_arrow_table()
         return self._filter_with_like(out[col].to_pylist(), like=like)
 
     @staticmethod
@@ -463,7 +475,8 @@ class Backend(
             .from_(f.duckdb_extensions())
             .where(sg.not_(C.installed & C.loaded))
         )
-        with self._safe_raw_sql(query) as cur:
+        with self.begin() as cur:
+            cur.execute(query)
             if not (not_installed_or_loaded := cur.fetchall()):
                 return
 
@@ -502,8 +515,8 @@ class Backend(
             )
 
         name = sg.table(name, catalog=catalog, quoted=self.compiler.quoted)
-        with self._safe_raw_sql(sge.Create(this=name, kind="SCHEMA", replace=force)):
-            pass
+        sql = sge.Create(this=name, kind="SCHEMA", replace=force)
+        self.raw_sql(sql)
 
     def drop_database(
         self, name: str, /, *, catalog: str | None = None, force: bool = False
@@ -514,8 +527,8 @@ class Backend(
             )
 
         name = sg.table(name, catalog=catalog, quoted=self.compiler.quoted)
-        with self._safe_raw_sql(sge.Drop(this=name, kind="SCHEMA", replace=force)):
-            pass
+        sql = sge.Drop(this=name, kind="SCHEMA", replace=force)
+        self.raw_sql(sql)
 
     @util.experimental
     def read_json(
@@ -765,8 +778,7 @@ class Backend(
             properties=sge.Properties(expressions=[sge.TemporaryProperty()]),
             expression=source_expr,
         )
-        with self._safe_raw_sql(view):
-            pass
+        self.raw_sql(view)
         return self.table(table_name)
 
     def read_parquet(
@@ -958,8 +970,7 @@ class Backend(
 
         query_con = f"""ATTACH 'host={parsed.hostname} user={parsed.username} password={parsed.password} port={parsed.port} database={database}' AS {catalog} (TYPE mysql)"""
 
-        with self._safe_raw_sql(query_con):
-            pass
+        self.raw_sql(query_con)
 
         return self.table(table_name, database=(catalog, database))
 
@@ -1219,7 +1230,8 @@ class Backend(
 
         """
         self.load_extension("sqlite")
-        with self._safe_raw_sql(f"SET GLOBAL sqlite_all_varchar={all_varchar}") as cur:
+        with self.begin() as cur:
+            cur.execute(f"SET GLOBAL sqlite_all_varchar={all_varchar}")
             cur.execute(
                 f"CALL sqlite_attach('{path}', overwrite={overwrite})"
             ).fetchall()
@@ -1500,8 +1512,7 @@ class Backend(
         query = self.compile(expr, params=params)
         args = ["FORMAT 'parquet'", *(f"{k.upper()} {v!r}" for k, v in kwargs.items())]
         copy_cmd = f"COPY ({query}) TO {str(path)!r} ({', '.join(args)})"
-        with self._safe_raw_sql(copy_cmd):
-            pass
+        self.raw_sql(copy_cmd)
 
     @util.experimental
     def to_csv(
@@ -1540,8 +1551,7 @@ class Backend(
             *(f"{k.upper()} {v!r}" for k, v in kwargs.items()),
         ]
         copy_cmd = f"COPY ({query}) TO {str(path)!r} ({', '.join(args)})"
-        with self._safe_raw_sql(copy_cmd):
-            pass
+        self.raw_sql(copy_cmd)
 
     @util.experimental
     def to_geo(
@@ -1642,9 +1652,7 @@ class Backend(
         args.extend(f"{k.upper()} {v!r}" for k, v in (kwargs or {}).items())
 
         copy_cmd = f"COPY ({query}) TO {str(path)!r} ({', '.join(args)})"
-
-        with self._safe_raw_sql(copy_cmd):
-            pass
+        self.raw_sql(copy_cmd)
 
     @util.experimental
     def to_json(
@@ -1688,11 +1696,8 @@ class Backend(
         self.raw_sql(f"COPY ({self.compile(expr)}) TO '{path!s}' ({options})")
 
     def _get_schema_using_query(self, query: str) -> sch.Schema:
-        with self._safe_raw_sql(f"DESCRIBE {query}") as cur:
-            rows = cur.fetch_arrow_table()
-
-        rows = rows.to_pydict()
-
+        t = self.raw_sql(f"DESCRIBE {query}").fetch_arrow_table()
+        rows = t.to_pydict()
         type_mapper = self.compiler.type_mapper
         return sch.Schema(
             {
@@ -1770,8 +1775,8 @@ class Backend(
         )
 
     def _create_temp_view(self, table_name, source):
-        with self._safe_raw_sql(self._get_temp_view_definition(table_name, source)):
-            pass
+        sql = self._get_temp_view_definition(table_name, source)
+        self.raw_sql(sql)
 
 
 @lazy_singledispatch
