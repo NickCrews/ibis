@@ -417,6 +417,12 @@ class PostgresType(SqlglotType):
         return sge.DataType(this=typecode.HSTORE)
 
     @classmethod
+    def _from_ibis_Struct(cls, dtype: dt.Struct) -> sge.DataType:
+        # PostgreSQL doesn't have anonymous struct/row types. We use JSONB to
+        # represent struct values, which preserves named field access.
+        return sge.DataType(this=typecode.JSONB)
+
+    @classmethod
     def from_string(cls, text: str, nullable: bool | None = None) -> dt.DataType:
         if text.lower().startswith("vector"):
             text = "vector"

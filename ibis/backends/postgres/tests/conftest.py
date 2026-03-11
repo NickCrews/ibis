@@ -45,7 +45,7 @@ class TestConf(ServiceBackendTest):
     # for numeric and decimal
 
     returned_timestamp_unit = "s"
-    supports_structs = False
+    supports_structs = True
     rounding_method = "half_to_even"
     service_name = "postgres"
     deps = ("psycopg2",)

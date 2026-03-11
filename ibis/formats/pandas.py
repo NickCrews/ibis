@@ -301,11 +301,14 @@ class PandasData(DataMapper):
             if values is None:
                 return values
 
-            items = (
-                values.items()
-                if isinstance(values, dict)
-                else zip(names, util.promote_list(values))
-            )
+            if isinstance(values, dict):
+                items = values.items()
+            elif isinstance(values, (list, tuple)):
+                # Handles psycopg2 namedtuples and plain tuples from composite
+                # type columns, as well as regular lists.
+                items = zip(names, values)
+            else:
+                items = zip(names, util.promote_list(values))
             return {
                 k: converter(v) if v is not None else v
                 for converter, (k, v) in zip(converters, items)

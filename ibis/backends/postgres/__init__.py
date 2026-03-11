@@ -547,6 +547,7 @@ $$""".format(**self._get_udf_source(udf_node))
         a = ColGen(table="a")
         c = ColGen(table="c")
         n = ColGen(table="n")
+        t = ColGen(table="t")
 
         format_type = self.compiler.f["pg_catalog.format_type"]
 
@@ -555,6 +556,8 @@ $$""".format(**self._get_udf_source(udf_node))
                 a.attname.as_("column_name"),
                 format_type(a.atttypid, a.atttypmod).as_("data_type"),
                 sg.not_(a.attnotnull).as_("nullable"),
+                t.typtype.as_("typtype"),
+                a.atttypid.as_("atttypid"),
             )
             .from_(sg.table("pg_attribute", db="pg_catalog").as_("a"))
             .join(
@@ -565,6 +568,11 @@ $$""".format(**self._get_udf_source(udf_node))
             .join(
                 sg.table("pg_namespace", db="pg_catalog").as_("n"),
                 on=n.oid.eq(c.relnamespace),
+                join_type="INNER",
+            )
+            .join(
+                sg.table("pg_type", db="pg_catalog").as_("t"),
+                on=t.oid.eq(a.atttypid),
                 join_type="INNER",
             )
             .where(
@@ -584,12 +592,93 @@ $$""".format(**self._get_udf_source(udf_node))
         if not rows:
             raise com.IbisError(f"Table not found: {name!r}")
 
-        return sch.Schema(
-            {
-                col: type_mapper.from_string(typestr, nullable=nullable)
-                for col, typestr, nullable in rows
-            }
+        fields = {}
+        for col, typestr, nullable, typtype, atttypid in rows:
+            if typtype == "c":
+                # PostgreSQL composite type: map to ibis Struct
+                dtype = self._get_composite_type(atttypid, nullable=nullable)
+            else:
+                dtype = type_mapper.from_string(typestr, nullable=nullable)
+            fields[col] = dtype
+
+        return sch.Schema(fields)
+
+    def _get_composite_type(self, type_oid: int, *, nullable: bool = True) -> dt.Struct:
+        """Return a dt.Struct corresponding to a PostgreSQL composite type OID.
+
+        Also registers a psycopg2 type adapter for the composite type so that
+        queries returning this type get Python namedtuples instead of raw
+        strings, making the values compatible with convert_Struct_element.
+        """
+        import psycopg2
+        import psycopg2.extras
+
+        a = ColGen(table="a")
+        t = ColGen(table="t")
+
+        format_type = self.compiler.f["pg_catalog.format_type"]
+
+        # Query the fields of the composite type, including the type name of
+        # the composite type itself so that we can register a psycopg2 adapter.
+        field_query = (
+            sg.select(
+                a.attname.as_("field_name"),
+                format_type(a.atttypid, a.atttypmod).as_("field_type"),
+                sg.not_(a.attnotnull).as_("nullable"),
+                t.typtype.as_("typtype"),
+                a.atttypid.as_("atttypid"),
+            )
+            .from_(sg.table("pg_attribute", db="pg_catalog").as_("a"))
+            .join(
+                sg.table("pg_type", db="pg_catalog").as_("t"),
+                on=t.oid.eq(a.atttypid),
+                join_type="INNER",
+            )
+            .where(
+                a.attrelid.eq(type_oid),
+                a.attnum > 0,
+                sg.not_(a.attisdropped),
+            )
+            .order_by(a.attnum)
         )
+
+        type_mapper = self.compiler.type_mapper
+
+        with self._safe_raw_sql(field_query) as cur:
+            rows = cur.fetchall()
+
+        fields = {}
+        for field_name, field_type_str, field_nullable, field_typtype, field_oid in rows:
+            if field_typtype == "c":
+                fields[field_name] = self._get_composite_type(
+                    field_oid, nullable=field_nullable
+                )
+            else:
+                fields[field_name] = type_mapper.from_string(
+                    field_type_str, nullable=field_nullable
+                )
+
+        # Look up the type name so we can register a psycopg2 adapter.
+        # register_composite() requires the type name string, not an OID.
+        pt = ColGen(table="pt")
+        type_name_query = (
+            sg.select(pt.typname)
+            .from_(sg.table("pg_type", db="pg_catalog").as_("pt"))
+            .where(pt.oid.eq(type_oid))
+        )
+
+        with self._safe_raw_sql(type_name_query) as cur:
+            row = cur.fetchone()
+
+        if row:
+            type_name = row[0]
+            # Register a psycopg2 type adapter so that queries returning this
+            # composite type produce Python namedtuples. convert_Struct_element
+            # can handle these correctly via the tuple branch.
+            with contextlib.suppress(psycopg2.ProgrammingError):
+                psycopg2.extras.register_composite(type_name, self.con)
+
+        return dt.Struct(fields, nullable=nullable)
 
     def _get_schema_using_query(self, query: str) -> sch.Schema:
         name = util.gen_name(f"{self.name}_metadata")
