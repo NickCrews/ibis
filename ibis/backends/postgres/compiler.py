@@ -313,17 +313,24 @@ class PostgresCompiler(SQLGlotCompiler):
             arg = self.cast(arg, dt.decimal)
         return self.cast(self.f.log(base, arg), op.dtype)
 
+    def visit_Field(self, op, *, rel, name):
+        field = super().visit_Field(op, rel=rel, name=name)
+        # Convert composite type (struct) columns to JSONB so that psycopg2
+        # returns Python dicts rather than raw strings, making the values
+        # compatible with convert_Struct_element.
+        if op.dtype.is_struct():
+            return self.f.to_jsonb(field)
+        return field
+
     def visit_StructField(self, op, *, arg, field):
-        idx = op.arg.dtype.names.index(field) + 1
-        # postgres doesn't have anonymous structs :(
-        #
-        # this works around ibis not having a way to tell sqlglot to transform
-        # an exploded array(row) into the equivalent unnest(t) _ (col1, ..., colN)
-        # element
-        #
-        # but also postgres should really support anonymous structs
+        # Convert to JSONB (handles both composite types from the DB and
+        # jsonb_build_object results), then extract the field by name.
+        jsonb_arg = self.f.to_jsonb(arg)
+        if op.dtype.is_struct():
+            # Return JSONB for nested struct fields so further field access works
+            return self.f.jsonb_extract_path(jsonb_arg, sge.convert(field))
         return self.cast(
-            self.f.jsonb_extract_path(self.f.to_jsonb(arg), sge.convert(f"f{idx:d}")),
+            self.f.jsonb_extract_path_text(jsonb_arg, sge.convert(field)),
             op.dtype,
         )
 
@@ -375,7 +382,13 @@ class PostgresCompiler(SQLGlotCompiler):
         )
 
     def visit_StructColumn(self, op, *, names, values):
-        return self.f.row(*map(self.cast, values, op.dtype.types))
+        # Build a JSONB object with named fields. This works for both struct
+        # literals and struct columns constructed from table expressions.
+        args = []
+        for name, value in zip(names, values):
+            args.append(sge.convert(name))
+            args.append(value)
+        return self.f.jsonb_build_object(*args)
 
     def visit_ToJSONArray(self, op, *, arg):
         return self.if_(
@@ -464,6 +477,22 @@ class PostgresCompiler(SQLGlotCompiler):
             )
         elif dtype.is_json():
             return self.cast(value, dt.json)
+        elif dtype.is_struct():
+            # Build a JSONB object for struct literals.
+            # PostgreSQL has no anonymous struct/row literal syntax, so we
+            # represent structs as JSONB objects with named fields.
+            args = []
+            for field_name, (field_dtype, field_value) in zip(
+                dtype.names, zip(dtype.types, value.values())
+            ):
+                compiled_value = self.visit_Literal(
+                    ops.Literal(field_value, field_dtype),
+                    value=field_value,
+                    dtype=field_dtype,
+                )
+                args.append(sge.convert(field_name))
+                args.append(compiled_value)
+            return self.f.jsonb_build_object(*args)
         return None
 
     def visit_TimestampFromYMDHMS(

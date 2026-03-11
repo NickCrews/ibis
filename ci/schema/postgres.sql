@@ -302,3 +302,19 @@ FROM awards_players;
 DROP TABLE IF EXISTS items CASCADE;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
 INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+
+-- Struct support via PostgreSQL composite types.
+-- to_jsonb() converts composite type values to JSONB with actual field names,
+-- enabling named field access in ibis queries.
+DROP TABLE IF EXISTS struct CASCADE;
+DROP TYPE IF EXISTS ibis_testing_struct_abc CASCADE;
+CREATE TYPE ibis_testing_struct_abc AS (a float8, b text, c int8);
+CREATE TABLE struct (abc ibis_testing_struct_abc);
+INSERT INTO struct VALUES
+    (ROW(1.0, 'banana', 2)::ibis_testing_struct_abc),
+    (ROW(2.0, 'apple', 3)::ibis_testing_struct_abc),
+    (ROW(3.0, 'orange', 4)::ibis_testing_struct_abc),
+    (ROW(NULL::float8, 'banana', 2)::ibis_testing_struct_abc),
+    (ROW(2.0, NULL::text, 3)::ibis_testing_struct_abc),
+    (NULL::ibis_testing_struct_abc),
+    (ROW(3.0, 'orange', NULL::int8)::ibis_testing_struct_abc);

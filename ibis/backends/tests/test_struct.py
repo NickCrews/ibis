@@ -77,7 +77,7 @@ _STRUCT_LITERAL = ibis.struct(
 _NULL_STRUCT_LITERAL = ibis.NA.cast("struct<a: int64, b: string, c: float64>")
 
 
-@pytest.mark.notimpl(["postgres", "risingwave"])
+@pytest.mark.notimpl(["risingwave"])
 @pytest.mark.parametrize("field", ["a", "b", "c"])
 def test_literal(backend, con, field):
     query = _STRUCT_LITERAL[field]
@@ -88,7 +88,6 @@ def test_literal(backend, con, field):
     backend.assert_series_equal(result, expected.astype(dtype))
 
 
-@pytest.mark.notimpl(["postgres"])
 @pytest.mark.parametrize("field", ["a", "b", "c"])
 @pytest.mark.notyet(
     ["clickhouse"], reason="clickhouse doesn't support nullable nested types"
@@ -101,7 +100,7 @@ def test_null_literal(backend, con, field):
     backend.assert_series_equal(result, expected)
 
 
-@pytest.mark.notimpl(["dask", "pandas", "postgres", "risingwave"])
+@pytest.mark.notimpl(["dask", "pandas", "risingwave"])
 def test_struct_column(alltypes, df):
     t = alltypes
     expr = t.select(s=ibis.struct(dict(a=t.string_col, b=1, c=t.bigint_col)))
@@ -113,7 +112,7 @@ def test_struct_column(alltypes, df):
     tm.assert_frame_equal(result, expected)
 
 
-@pytest.mark.notimpl(["dask", "pandas", "postgres", "risingwave", "polars"])
+@pytest.mark.notimpl(["dask", "pandas", "risingwave", "polars"])
 @pytest.mark.notyet(
     ["flink"], reason="flink doesn't support creating struct columns from collect"
 )
@@ -139,9 +138,6 @@ def test_collect_into_struct(alltypes):
 
 
 @pytest.mark.notimpl(
-    ["postgres"], reason="struct literals not implemented", raises=PsycoPg2SyntaxError
-)
-@pytest.mark.notimpl(
     ["risingwave"],
     reason="struct literals not implemented",
     raises=PsycoPg2InternalError,
@@ -155,7 +151,9 @@ def test_field_access_after_case(con):
 
 
 @pytest.mark.notimpl(
-    ["postgres"], reason="struct literals not implemented", raises=PsycoPg2SyntaxError
+    ["postgres"],
+    reason="create_table maps struct to JSONB which loses type information",
+    raises=AssertionError,
 )
 @pytest.mark.notimpl(["flink"], raises=IbisError, reason="not implemented in ibis")
 @pytest.mark.parametrize(
@@ -238,11 +236,6 @@ def test_keyword_fields(con, nullable):
             con.drop_table(name, force=True)
 
 
-@pytest.mark.notyet(
-    ["postgres"],
-    raises=PsycoPg2SyntaxError,
-    reason="sqlglot doesn't implement structs for postgres correctly",
-)
 @pytest.mark.notyet(
     ["risingwave"],
     raises=PsycoPg2InternalError,
