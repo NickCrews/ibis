@@ -610,6 +610,7 @@ $$""".format(**self._get_udf_source(udf_node))
         queries returning this type get Python namedtuples instead of raw
         strings, making the values compatible with convert_Struct_element.
         """
+        import psycopg2
         import psycopg2.extras
 
         a = ColGen(table="a")
@@ -617,6 +618,8 @@ $$""".format(**self._get_udf_source(udf_node))
 
         format_type = self.compiler.f["pg_catalog.format_type"]
 
+        # Query the fields of the composite type, including the type name of
+        # the composite type itself so that we can register a psycopg2 adapter.
         field_query = (
             sg.select(
                 a.attname.as_("field_name"),
@@ -655,11 +658,25 @@ $$""".format(**self._get_udf_source(udf_node))
                     field_type_str, nullable=field_nullable
                 )
 
-        # Register a psycopg2 type adapter for this composite type so that
-        # queries returning this type produce Python namedtuples, which
-        # convert_Struct_element can handle correctly.
-        with contextlib.suppress(Exception):
-            psycopg2.extras.register_composite(type_oid, self.con)
+        # Look up the type name so we can register a psycopg2 adapter.
+        # register_composite() requires the type name string, not an OID.
+        pt = ColGen(table="pt")
+        type_name_query = (
+            sg.select(pt.typname)
+            .from_(sg.table("pg_type", db="pg_catalog").as_("pt"))
+            .where(pt.oid.eq(type_oid))
+        )
+
+        with self._safe_raw_sql(type_name_query) as cur:
+            row = cur.fetchone()
+
+        if row:
+            type_name = row[0]
+            # Register a psycopg2 type adapter so that queries returning this
+            # composite type produce Python namedtuples. convert_Struct_element
+            # can handle these correctly via the tuple branch.
+            with contextlib.suppress(psycopg2.ProgrammingError):
+                psycopg2.extras.register_composite(type_name, self.con)
 
         return dt.Struct(fields, nullable=nullable)
 

@@ -17,7 +17,6 @@ from ibis.backends.tests.errors import (
     ClickHouseDatabaseError,
     PolarsColumnNotFoundError,
     PsycoPg2InternalError,
-    PsycoPg2SyntaxError,
     Py4JJavaError,
     PySparkAnalysisException,
 )
