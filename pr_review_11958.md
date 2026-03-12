@@ -169,7 +169,18 @@ they'll get a silent regression. Either keep a separate test for the zero-timest
 it needs `pytest.mark.xfail` until the upstream driver bug is fixed), or add a comment
 documenting that this case is currently broken and tracked upstream.
 
-### 12. `test_invalid_port` uses a very loose `match` pattern
+### 12. `converter.py` deletion removes `convert_Time` — potential regression
+
+The deleted `MySQLPandasData.convert_Time` converted MySQL's TIME columns from pandas
+`timedelta` to Python `datetime.time` objects. Without it, TIME columns will come back as
+`timedelta64` values after the ADBC→pandas roundtrip unless the ADBC driver handles this
+natively. There is no test for TIME column output, so a regression here would go unnoticed.
+Verify (with a test) that TIME values are still returned as `datetime.time`.
+
+The deleted `convert_Timestamp` also contained the `0000-00-00 00:00:00` → `None` coercion.
+This connects to issue #11 above.
+
+### 14. `test_invalid_port` uses a very loose `match` pattern
 
 ```diff
 -with pytest.raises(MySQLOperationalError):
