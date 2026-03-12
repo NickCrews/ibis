@@ -155,6 +155,31 @@ Unpinned installs in CI mean the driver version can change between runs, causing
 or silent behaviour changes. Pin `dbc` to a minimum version (`pipx install 'dbc>=X.Y'`) and
 consider also pinning the MySQL driver version.
 
+### 11. `test_zero_timestamp_data` changes test semantics, not just driver compat
+
+```diff
+-INSERT INTO ztmp_date_issue VALUES ('C', '2018-10-22', 0), ...
++INSERT INTO ztmp_date_issue VALUES ('C', '2018-10-22', NULL), ...
+```
+
+The old test verified that MySQL's zero timestamp (`0000-00-00 00:00:00`) was correctly handled
+by Ibis. The new test uses actual `NULL` values. The original behaviour — reading a zero-date and
+getting `NaT` — is no longer tested at all. If a user's production table contains zero timestamps,
+they'll get a silent regression. Either keep a separate test for the zero-timestamp path (even if
+it needs `pytest.mark.xfail` until the upstream driver bug is fixed), or add a comment
+documenting that this case is currently broken and tracked upstream.
+
+### 12. `test_invalid_port` uses a very loose `match` pattern
+
+```diff
+-with pytest.raises(MySQLOperationalError):
++with pytest.raises(Exception, match=r"connect|connection refused|ping"):
+```
+
+Catching `Exception` with a broad regex means this test would pass for almost any error. Prefer
+to catch a more specific ADBC exception type (e.g., `adbc_driver_manager.OperationalError`) and
+tighten the match pattern once the driver's error messages are known.
+
 ---
 
 ## Minor Nits
@@ -188,3 +213,5 @@ when this can be removed.
 - `disconnect()` method is a good addition.
 - The `_decode_opaque_storage()` function is well-documented given its hack-y nature.
 - `_get_schema_using_query()` is cleaner using `DESCRIBE` rather than parsing cursor metadata flags.
+- `to_pyarrow_batches()` now uses `fetch_record_batch()` for true streaming Arrow output — no more
+  pandas roundtrip. This is the biggest real-world performance win in the PR.
