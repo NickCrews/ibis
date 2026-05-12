@@ -121,7 +121,15 @@ class DataType(Concrete, Coercible):
             raise TypeError(f"{value!r} cannot be parsed as a datatype")
 
         if nullable is not None:
-            return typ.copy(nullable=nullable)
+            parsed_nullability = typ.nullable
+            if parsed_nullability != nullable:
+                if nullable:
+                    suggested_string_code = value.lstrip("!")
+                else:
+                    suggested_string_code = f"!{value}"
+                raise ValueError(
+                    f"Passed `nullable={nullable}` when the code {value!r} implies `nullable={parsed_nullability}`. Did you mean to pass '{suggested_string_code}' to indicate {'nullability' if nullable else 'non-nullability'}?"
+                )
         return typ
 
     @classmethod

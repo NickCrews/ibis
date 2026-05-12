@@ -73,14 +73,33 @@ def test_dtype(spec, expected):
             dt.Int64(nullable=False),
             marks=pytest.mark.xfail(sys.version_info < (3, 10), reason="python 3.9"),
         ),
+        (lambda: ("int",), dt.Int64(nullable=True)),
+        (lambda: ("int", None), dt.Int64(nullable=True)),
+        (
+            lambda: ("int", False),
+            ValueError(
+                "Passed `nullable=False` when the code 'int' implies `nullable=True`. Did you mean to pass '!int' to indicate non-nullability?"
+            ),
+        ),
+        (lambda: ("int", True), dt.Int64(nullable=True)),
         (lambda: ("!int",), dt.Int64(nullable=False)),
         (lambda: ("!int", None), dt.Int64(nullable=False)),
         (lambda: ("!int", False), dt.Int64(nullable=False)),
-        (lambda: ("!int", True), dt.Int64(nullable=True)),
+        (
+            lambda: ("!int", True),
+            ValueError(
+                "Passed `nullable=True` when the code '!int' implies `nullable=False`. Did you mean to pass 'int' to indicate nullability?"
+            ),
+        ),
     ],
 )
 def test_nullable_dtype(args, expected):
-    assert dt.dtype(*args()) == expected
+    if isinstance(expected, Exception):
+        with pytest.raises(type(expected)) as exc_info:
+            dt.dtype(*args())
+        assert str(exc_info.value) == str(expected)
+    else:
+        assert dt.dtype(*args()) == expected
 
 
 def test_bogus_union():
