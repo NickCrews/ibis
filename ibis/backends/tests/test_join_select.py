@@ -153,6 +153,25 @@ def test_join_select_row_number(con):
         param(
             # a reduction alone is still a window over the join, so there is one
             # row per joined row; use `.aggregate()` to get a single row
+            #
+            # This differs from SQL, where `SELECT SUM(c.balance) FROM c JOIN o`
+            # returns a single row. Someone coming from SQL will expect one row
+            # of 50 and get one row of 50 per joined row instead.
+            #
+            # Options:
+            # - window over the join (what this test expects): the same as
+            #   `Table.select`, where `t.select(s=t.x.sum())` also returns one
+            #   row per row of `t`, so there is one rule for every projection.
+            #   Differs from SQL.
+            # - a single aggregated row: matches SQL, but makes `Join.select`
+            #   behave differently from `Table.select`, and the result changes
+            #   from one row to many as soon as a non-reduction column is added
+            #   to the selection.
+            #
+            # Recommendation: keep the window, so `Join.select` and
+            # `Table.select` follow the same rule, call it out as a breaking
+            # change in the release notes, and point to `.aggregate()` in the
+            # `select` docstring for a single row.
             lambda: customers.join(orders, "customer_id").select(
                 total_balance=customers.balance.sum()
             ),
@@ -202,6 +221,31 @@ def test_join_select_row_number(con):
         param(
             # `orders` only filters the rows and isn't part of the output, so its
             # sum is a scalar subquery over all of `orders` (1 + 2 + 3)
+            #
+            # In SQL the right side of a semi join (`WHERE EXISTS (...)`) isn't
+            # in scope in the select list, so this has no SQL equivalent. In
+            # ibis, selecting `orders.quantity` without the sum raises
+            # `IntegrityError`, but `orders.quantity.sum()` is accepted.
+            #
+            # Options:
+            # - scalar subquery over all of `orders`, giving 6 (what this test
+            #   expects): the same treatment as any table outside the join,
+            #   like `refunds` above. But `orders` is part of the query, so a
+            #   reader may expect the sum over the matched orders (1 + 2 = 3),
+            #   and the reduction is accepted while the plain column is
+            #   rejected.
+            # - sum over the matched orders, giving 3: matches what a reader of
+            #   the expression likely means, but a semi join doesn't produce
+            #   the matched right rows, so this needs rewriting into an inner
+            #   join and aggregation, and a customer with several matching
+            #   orders makes it unclear which rows are summed.
+            # - raise `IntegrityError`, the same as for `orders.quantity`:
+            #   matches SQL scoping and the non-reduction case, and both
+            #   intents remain expressible explicitly:
+            #   `orders.quantity.sum().as_scalar()` for all orders, or an inner
+            #   join followed by `.aggregate()` for the matched orders.
+            #
+            # Recommendation: raise, and expect the error here instead of 6.
             lambda: customers.semi_join(orders, "customer_id").select(
                 "customer_id", total_quantity=orders.quantity.sum()
             ),
@@ -219,6 +263,28 @@ def test_join_select_row_number(con):
                     reason="semi joins aren't supported",
                 ),
             ],
+        ),
+        param(
+            # a correlated subquery containing an uncorrelated subquery over
+            # `customers`: the inner `customers.filter(...)` is the whole
+            # `customers` table (3 rows), so the threshold is 3 * 40 = 120,
+            # and only customer 2's refund (100) is below it
+            lambda: customers.join(orders, "customer_id").select(
+                "customer_id",
+                refunded=refunds.filter(
+                    refunds.customer_id == customers.customer_id,
+                    refunds.amount
+                    < customers.filter(customers.balance > 0).balance.count() * 40,
+                ).amount.sum(),
+            ),
+            [(2, 100), (3, None)],
+            id="correlated_subquery_containing_subquery",
+            marks=pytest.mark.xfail(
+                reason=(
+                    "the inner subquery references an alias missing from the "
+                    "compiled query"
+                ),
+            ),
         ),
     ],
 )
@@ -313,7 +379,7 @@ impala_window_then_join = pytest.mark.notyet(
 )
 def test_window_then_join(con, make_expr, expected):
     # window functions are evaluated over the join they were selected from,
-    # and joining another table afterwards only filters the result
+    # before the later join with vips
     expr = make_expr().join(vips, "customer_id")
     assert rows(con, expr) == expected
 
