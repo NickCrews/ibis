@@ -25,6 +25,7 @@ from ibis.backends.tests.errors import (
     ImpalaHiveServer2Error,
     MySQLProgrammingError,
     OracleDatabaseError,
+    PolarsInvalidOperationError,
     PolarsSchemaError,
     PsycoPg2InternalError,
     Py4JJavaError,
@@ -1633,6 +1634,148 @@ def test_try_cast_func(con, from_val, to_type, func):
     expr = ibis.literal(from_val).try_cast(to_type)
     result = con.execute(expr)
     assert func(result)
+
+
+STRING_TO_BOOLEAN = [
+    ("true", True),
+    ("TRUE", True),
+    ("True", True),
+    ("false", False),
+    ("FALSE", False),
+    ("False", False),
+]
+
+
+def _ordered_values(con, t, expr):
+    df = con.execute(t.select("i", x=expr).order_by("i"))
+    return [None if pd.isna(x) else x for x in df.x]
+
+
+@pytest.mark.broken(
+    ["pandas", "dask"],
+    reason="uses python truthiness, so every non-empty string is True",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["sqlite", "mysql"],
+    reason="no boolean type; non-numeric strings cast to 0",
+    raises=AssertionError,
+)
+@pytest.mark.broken(
+    ["mssql"],
+    reason="the cast is compiled as a no-op, leaving a string",
+    raises=PyODBCDataError,
+)
+@pytest.mark.notimpl(
+    ["polars"],
+    reason="polars can't cast strings to booleans",
+    raises=PolarsInvalidOperationError,
+)
+@pytest.mark.notyet(
+    ["impala"],
+    reason="impala can't cast strings to booleans",
+    raises=ImpalaHiveServer2Error,
+)
+def test_cast_string_to_boolean_column(con):
+    strings = [s for s, _ in STRING_TO_BOOLEAN] + [None]
+    expected = [b for _, b in STRING_TO_BOOLEAN] + [None]
+    t = ibis.memtable({"i": range(len(strings)), "s": strings})
+    result = _ordered_values(con, t, t.s.cast("boolean"))
+    assert result == expected
+
+
+@pytest.mark.broken(
+    ["pandas", "dask"],
+    reason="uses python truthiness, so every non-empty string is True",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["sqlite", "mysql"],
+    reason="no boolean type; non-numeric strings cast to 0",
+    raises=AssertionError,
+)
+@pytest.mark.broken(
+    ["mssql"],
+    reason="the cast is compiled as a no-op, leaving a string",
+    raises=PyODBCDataError,
+)
+@pytest.mark.notimpl(
+    ["polars"],
+    reason="polars can't cast strings to booleans",
+    raises=PolarsInvalidOperationError,
+)
+@pytest.mark.notyet(
+    ["impala"],
+    reason="impala can't cast strings to booleans",
+    raises=ImpalaHiveServer2Error,
+)
+def test_cast_string_to_boolean_literal(con):
+    result = [
+        con.execute(ibis.literal(s).cast("boolean")) for s, _ in STRING_TO_BOOLEAN
+    ]
+    expected = [b for _, b in STRING_TO_BOOLEAN]
+    assert result == expected
+
+
+@pytest.mark.broken(
+    ["pandas", "dask"], reason="uses python truthiness, so 'not a boolean' is True"
+)
+@pytest.mark.notyet(["sqlite", "mysql"], reason="non-numeric strings cast to 0")
+@pytest.mark.notyet(["druid"], reason="strings other than 'true' cast to false")
+@pytest.mark.notyet(["pyspark"], reason="invalid strings cast to NULL")
+def test_cast_invalid_string_to_boolean(con):
+    t = ibis.memtable({"i": [0, 1], "s": ["true", "not a boolean"]})
+    with pytest.raises(Exception):  # noqa: B017
+        _ordered_values(con, t, t.s.cast("boolean"))
+
+
+@pytest.mark.broken(
+    ["pandas", "dask"],
+    reason="uses python's str(), giving 'True' and 'False'",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["sqlite", "mysql", "druid", "impala", "mssql"],
+    reason="booleans cast to '1' and '0'",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["oracle", "flink"],
+    reason="booleans cast to 'TRUE' and 'FALSE'",
+    raises=AssertionError,
+)
+def test_cast_boolean_to_string_column(con):
+    t = ibis.memtable({"i": [0, 1, 2], "b": [True, False, None]})
+    result = _ordered_values(con, t, t.b.cast("string"))
+    assert result == ["true", "false", None]
+
+
+@pytest.mark.broken(
+    ["pandas", "dask"],
+    reason="uses python's str(), giving 'True' and 'False'",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["sqlite", "mysql", "druid", "impala"],
+    reason="booleans cast to '1' and '0'",
+    raises=AssertionError,
+)
+@pytest.mark.notyet(
+    ["oracle", "flink"],
+    reason="booleans cast to 'TRUE' and 'FALSE'",
+    raises=AssertionError,
+)
+@pytest.mark.broken(
+    ["polars"], reason="literals cast to '1' and '0'", raises=AssertionError
+)
+@pytest.mark.broken(
+    ["mssql"],
+    reason="the boolean literal compiles to invalid SQL",
+    raises=PyODBCProgrammingError,
+)
+def test_cast_boolean_to_string_literal(con):
+    result = [con.execute(ibis.literal(b).cast("string")) for b in (True, False)]
+    assert result == ["true", "false"]
 
 
 @pytest.mark.parametrize(
